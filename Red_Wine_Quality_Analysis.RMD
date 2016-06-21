@@ -1,0 +1,466 @@
+---
+title: "Red Wine Quality Analysis"
+author: "Roshan Shetty"
+date: "October 24, 2015"
+output: html_document
+---
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+The Red Wine Quality data is related to the red variant of the Portuguese "Vinho Verde" wine. Experts have graded the wine quality between 0 (very bad) and 10 (very excellent). The aim of this project is to explore this data, figure out interesting trends and attempt to build a model which predicts red wine quality.
+An initial summary of the variables is done. 
+```{r summary_statistics, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+redwine_input <- read.csv(file = "wineQualityReds.csv")
+redwine_input <- redwine_input[, -1]
+redwine_input$qualityCategory <- as.factor(redwine_input$quality)
+str(redwine_input)
+summary(redwine_input)
+```
+1599 observations is not that much but good enough to explore further.
+```{r hist_plots_1a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+# Histogram plots
+par(mar=c(4,1,2,1))
+par(mfrow = c(1, 2))
+hist(x = redwine_input$fixed.acidity, xlab = "Fixed Acidity", 
+     main = "Histogram of fixed.acidity")
+hist(x = log10(redwine_input$volatile.acidity), xlab = "Volatile Acidity", 
+     main = "Histogram of volatile.acidity")
+```
+
+The histogram of fixed acidity is right skewed while that of volatile acidity is left skewed.
+```{r hist_plots_1b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+library(ggplot2)
+library(gridExtra)
+p1 <- qplot(x = citric.acid, data = redwine_input, geom = "histogram", 
+      binwidth = 0.1) + scale_x_log10() + 
+      ggtitle(label = "Histogram of citric acid \n on log scale")
+p2 <- qplot(x = residual.sugar, data = redwine_input, geom = "histogram", 
+      binwidth = 0.1) + scale_x_log10() + 
+      ggtitle(label = "Histogram of Residual Sugar \n on log scale")
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The histogram of citric acid is left skewed even on a log scale. It seems to have multiple modes as well. A new plot with a lower binwidth might be needed. On the other hand, the histogram of residual sugar is right skewed on a log scale.
+```{r hist_plots_1c, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+par(mfrow = c(1, 2))
+hist(x = log10(redwine_input$chlorides), xlab = "Chlorides", 
+     main = "Histogram of \n log10(Chlorides)")
+hist(x = log10(redwine_input$free.sulfur.dioxide), xlab = "Free Sulphur Dioxide", 
+     main = "Histogram of \n log10(free.sulfur.dioxide)")
+```
+
+Transforming the chlorides attribute and the free.supfur.dioxide attribute a log scale makes their histograms normal. 
+```{r hist_plots_1d, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+par(mfrow = c(1, 2))
+hist(x = log10(redwine_input$total.sulfur.dioxide), xlab = "Total Sulphur Dioxide", 
+     main = "Histogram of \n log10(total.sulfur.dioxide)")
+hist(x = redwine_input$density, xlab = "Density",
+     main = "Histogram of \n density")
+```
+
+The log transform of the attribute total.sulfur.dioxide makes the histogram normal. The density attribute has a normal distribution with a bit more outliers on the right.
+
+```{r hist_plots_1e, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+par(mfrow = c(1, 2))
+hist(x = redwine_input$pH, xlab = "pH",
+     main = "Histogram of pH")
+hist(x = log10(redwine_input$sulphates), xlab = "Sulphates",
+     main = "Histogram of \n log10(Sulphates)")
+```
+
+The histogram of pH attribute seems normal with a few outliers to the right. The histogram of sulphates on the log scale is a bit right skewed.
+```{r hist_plots_1f, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+par(mfrow = c(1, 2))
+par(mar=c(4,2,4,1))
+hist(x = log10(redwine_input$alcohol), xlab = "Alcohol",
+     main = "Histogram of \n log10(alcohol)")
+# Barplot has been used to show the frequency distribution of the 
+# categorical variable
+barplot(table(redwine_input$qualityCategory), 
+        main = "Barplot of various quality values \n of redwine in the dataset")
+```
+
+Even on a log scale, the histogram of the alcohol attribute seems right skewed and bi-modal which could be explored with lesser binwidth. The majority of red wines are of quality '5' or '6' which represent moderate quality. It shows that the data set provided is not randomly distributed across all the quality types.
+
+The histogram of citric.acid attribute is plotted with lower bin width.
+```{r ggplot_citric_hist, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+library(ggplot2)
+ggplot(data = redwine_input, aes(redwine_input$citric.acid)) + 
+  geom_histogram(breaks=seq(0, 1, by = 0.01)) +
+  ggtitle("Histogram of citric acid")
+```
+
+The histogram seems highly right skewed and it has at least 3 modes, if not more.
+
+The histogram of alcohol seems bi-modal on a log scale. This can be explored in bit more details.
+```{r ggplot_alcohol_hist, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+qplot(log10(redwine_input$alcohol),
+      geom="histogram",
+      binwidth = 0.01,  
+      main = "Histogram for Alcohol", 
+      xlab = "Alcohol (% by volume)")
+```
+
+The histogram of alcohol clearly has 2 modes. The first mode also has 2 peaks very near by. It seems like the large proportion of red wine have lower amounts of alcohol content.
+
+Box plots give a better sense of where most of the data lie. They are plotted for the variables below.
+```{r ggplot_box_plots_1a, echo = FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+# The following code is used to compute the boxplot for the various variables 
+# in the dataset
+library(ggplot2)
+library(gridExtra)
+p1 <- ggplot(redwine_input, aes(rep(1, length(fixed.acidity)), 
+      redwine_input$fixed.acidity)) + 
+      geom_boxplot()
+p2 <- ggplot(redwine_input, aes(rep(1, length(volatile.acidity)), 
+      volatile.acidity)) + 
+      geom_boxplot()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The box plots of fixed.acidtiy and volatile.acidity show high skewness to the right. Most of the values are in a small range.
+
+```{r ggplot_box_plots_1b, echo = FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+p1 <- ggplot(redwine_input, aes(rep(1, length(citric.acid)), 
+      redwine_input$citric.acid)) + 
+      geom_boxplot()
+p2 <- ggplot(redwine_input, aes(rep(1, length(residual.sugar)), 
+      residual.sugar)) + 
+      geom_boxplot()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The box plot of citric.acid is relatively normal, although a bit right skewed. On the other hand, residual.sugar is highly right skewed. The range of residual.sugar containing most of the values is also extremely small.
+
+```{r ggplot_box_plots_1c, echo = FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+p1 <- ggplot(redwine_input, aes(rep(1, length(chlorides)), 
+      redwine_input$chlorides)) + 
+      geom_boxplot()
+p2 <- ggplot(redwine_input, aes(rep(1, length(free.sulfur.dioxide)), 
+      free.sulfur.dioxide)) + 
+      geom_boxplot()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The box plot of chlorides is also extremely right skewed and most of the values fall in a very narrow range.There is one really far outlier at around 0.6 choloride value. Sulfur.dioxide is also right skewed and the majority of the values are in the small range too.
+
+```{r ggplot_box_plots_1d, echo = FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+p1 <- ggplot(redwine_input, aes(rep(1, length(density)), 
+      redwine_input$density)) + 
+      geom_boxplot()
+p2 <- ggplot(redwine_input, aes(rep(1, length(pH)), 
+      redwine_input$pH)) + 
+      geom_boxplot()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The box plots of density and pH are pretty normal. Density seems to be a bit more tightly distributed though. 
+
+```{r ggplot_box_plots_1e, echo = FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/'}
+p1 <- ggplot(redwine_input, aes(rep(1, length(sulphates)), 
+      sulphates)) + 
+      geom_boxplot()
+p2 <- ggplot(redwine_input, aes(rep(1, length(alcohol)), 
+      alcohol)) + 
+      geom_boxplot()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The box plot of sulphates is also highly right skewed and shows two clusters of points at the extreme end. The range in which most of the points lie is also pretty small. The box plot of alcohol is also right skewed but the range of majority of the points is a bit larger.
+
+To summarize, the box plots reveal the skewness in distribution and presence of a large amount of outliers in the variables - residual.sugar, chlorides, density & sulphates.
+
+The bi-variate relationships can now be explored. A pairs plot will help in that respect.
+
+```{r ggpairs_scatter, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+library(GGally)
+# Few of the variables whose correlation needs to be highlighted is being subsetted here.
+redwine_input_scatter <- redwine_input[,-c(4,5,6)]
+ggpairs(data = redwine_input_scatter)
+```
+
+The pairs plot reveals a lot of expected relationships while some are not:
+
+1. The variables which are relatively highly correlated in magnitude with each other are fixed.acidity and citric.acid;fixed.acidity and density; pH and citric.acid; pH and fixed.acidity; citric.acid and volatile.acidity. These relationships should be explored further. Scatter plots with smoothers are plotted to further explore these relationships. 
+```{r ggplot_scatter_1, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Basic scatterplot
+p1 <- ggplot(redwine_input_scatter, aes(x = fixed.acidity, y = citric.acid)) + 
+  geom_point(alpha = 0.25) + 
+  geom_line(stat = 'summary', fun.y = mean, color = 'red') + 
+  geom_smooth(method = "lm")
+p2 <- ggplot(redwine_input_scatter, aes(x = fixed.acidity, y = density)) + 
+  geom_point(alpha = 0.25) + 
+  geom_line(stat = 'summary', fun.y = mean, color = 'red') + 
+  geom_smooth(method = "lm")
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The second plot shows that a slightly linear relationship exists between fixed.acidity and density although the slope of the line seems small. The linear relationship does not seem as pronounced as the one between citric.acid and fixed.acidity in terms of the slope. But the correlations are pretty similar as shown below.
+```{r ggplot_corr_1, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+with(redwine_input_scatter, cor.test(citric.acid, fixed.acidity))
+with(redwine_input_scatter, cor.test(density, fixed.acidity))
+```
+
+It could be that the range of the density attribute is pretty small but there is a definite increasing trend within the range. 
+Similar plots and correlation coefficients are also plotted for the other variables. 
+```{r ggplot_scatter_2a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Basic scatterplots with regression line superimposed
+p1 <- ggplot(redwine_input_scatter, aes(x = fixed.acidity, y = pH)) + 
+  geom_point(alpha = 0.25) + geom_line(stat = 'summary', fun.y = mean, color = 'red') + 
+  geom_smooth(method = "loess")
+p2 <- ggplot(redwine_input_scatter, aes(x = citric.acid, y = pH)) + 
+  geom_point(alpha = 0.25) + geom_line(stat = 'summary', fun.y = mean, color = 'red') + 
+  geom_smooth(method = "loess")
+grid.arrange(p1, p2, ncol = 2)
+ggplot(redwine_input_scatter, aes(x = citric.acid, y = volatile.acidity)) + 
+  geom_point(alpha = 0.25) + geom_line(stat = 'summary', fun.y = mean, color = 'red') + 
+  geom_smooth(method = "lOess")
+```
+
+The scatter plot of pH and fixed.acidity with the regression line superimposed clearly shows a decreasing trend. A similar decreasing trend is observed between pH and citric.acid in a similar second plot. The scatter plot between volatile.acidity and citric.acid shows a steady decreasing trend  which flattens out at the end.
+
+```{r ggplot_scatter_2b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Correlations
+with(redwine_input_scatter, cor.test(pH, fixed.acidity))
+with(redwine_input_scatter, cor.test(pH, citric.acid))
+with(redwine_input_scatter, cor.test(volatile.acidity, citric.acid))
+```
+
+The correlation between pH and fixed.acidity is a pretty large negative value of -0.68. pH and citric.acid as well as volatile.acidity and citric.acid have relatively smaller correlation values of -0.54 and -0.55 respecitvely.
+
+2. Quality is also positively correlated with alcohol and sulphates while it is negatively correlated with volatile.acidity. 
+
+```{r ggplot_scatter_3a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+with(redwine_input, cor.test(quality, alcohol))
+with(redwine_input, cor.test(quality, sulphates))
+with(redwine_input, cor.test(quality, volatile.acidity))
+```
+
+Box plots of quality with these variables are plotted below.
+
+```{r ggplot_scatter_3b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p1 <- ggplot(redwine_input, aes(x = qualityCategory, y = alcohol)) + 
+  geom_boxplot() +  geom_smooth(method = "loess",  aes(group=1))
+p2 <- ggplot(redwine_input, aes(x = qualityCategory, y = sulphates)) + 
+  geom_boxplot() +  geom_smooth(method = "loess", aes(group=1))
+p3 <- ggplot(redwine_input, aes(x = qualityCategory, y = volatile.acidity)) + 
+  geom_boxplot() +  geom_smooth(method = "loess", aes(group=1))
+grid.arrange(p1, p2, p3, ncol = 2)
+```
+
+
+For lower quality red wine, alcohol content is similar but it increases for increasing values of quality above 5. 
+Sulphates increases slightly with increasing values of quality. Similarly, the volatile acidity of alcohol decreases with increasing quality of red wine. 
+
+Although volatile acidity decreases with higher alcohol quality, the fixed acidity and citric acid density increases slightly with increasing alcohol quality. These relationships are plotted below.
+```{r ggplot_scatter_4a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p1 <- ggplot(redwine_input_scatter, aes(x = qualityCategory, y = citric.acid)) + 
+  geom_boxplot() +  geom_smooth(method = "loess",  aes(group=1))
+p2 <- ggplot(redwine_input_scatter, aes(x = qualityCategory, y = fixed.acidity)) + 
+  geom_boxplot() +  geom_smooth(method = "loess", aes(group=1))
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The correlations between quality and citric.acid as well as quality and fixed.acid are also slightly positive as shown below.
+
+```{r ggplot_scatter_4b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+with(redwine_input_scatter, cor.test(quality, citric.acid))
+with(redwine_input_scatter, cor.test(quality, fixed.acidity))
+```
+
+The box plots of citric acid with quality seem interesting. As quality increases the citric acid proportion increases as the peaks move more towards the right. There could be other features in its distribution plot which can be explored with the density plots.
+
+```{r ggplot_scatter_5a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+redwine_input_scatter$qualityCategory <- factor(redwine_input_scatter$qualityCategory,
+          levels = rev(levels(redwine_input_scatter$qualityCategory)))
+ggplot(data = redwine_input_scatter, aes(x=citric.acid, fill = qualityCategory, 
+                                         order = as.numeric(qualityCategory))) + 
+  geom_density(alpha = 0.4) +
+  scale_fill_brewer(direction = -1, type = 'div')
+```
+
+Higher quality alcohols have a higher density for citric acid. The density plots are multimodal for many of the quality categories. 
+
+The distribution doesn't seem normal due to multiple modes. It can be tested using the Shapiro-Wilk test.
+```{r ggplot_scatter_5b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 8,]$density)
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 7,]$density)
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 6,]$density)
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 5,]$density)
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 4,]$density)
+shapiro.test(redwine_input_scatter[redwine_input_scatter$quality == 3,]$density)
+```
+
+Conducting a Shapiro-Wilk test showed that the data was not-normal for some of the higer categories highlighting the multi-modal distribution of the data.
+
+Since alcohol, volatile.acidity and citric.acid have skewed distributions, it might be useful to plot the log of these attributes against quality. 
+```{r ggplot_scatter_6a, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p1 <- ggplot(redwine_input_scatter, aes(x = qualityCategory, y = alcohol)) + 
+  geom_boxplot() +  geom_smooth(method = "loess",  aes(group=1)) + scale_y_log10()
+p2 <- ggplot(redwine_input_scatter, aes(x = qualityCategory, y = volatile.acidity)) + 
+  geom_boxplot() +  geom_smooth(method = "loess", aes(group=1)) +
+  scale_y_log10()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+The relationships between the variables remain the same although the skweness in the continuous attributes is reduced. Alcohol reduces with increasing quality while volatile.acidity increases with it.
+
+```{r ggplot_scatter_6b, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+with(redwine_input_scatter, cor.test(quality, alcohol))
+with(redwine_input_scatter, cor.test(quality, volatile.acidity))
+```
+
+The correlation of quality with alcohol is 0.47 while that of quality with volatile.acidity is -0.39 reflecting the plot trends.
+
+It would be interesting to explore the variability of the different variables with wine category. This could help give insights on any interesting trends.
+
+```{r qplot_histograms_1, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Faceted histograms of few of the variables would be useful to explore the distribution of the variables in the different wine categories
+# The binwidths are adjusted according to the range of the variables
+library(ggplot2)
+p <- qplot(pH, data = redwine_input, geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of pH is similar in all categories except the last one where it is bit right skewed.
+
+```{r qplot_histograms_2, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(alcohol, data = redwine_input, geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of pH is similar in all categories where there are enough data points like 5, 6 and 7. 
+
+```{r qplot_histograms_3, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(density, data = redwine_input, geom = "histogram", binwidth = 0.01)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of density with alcohol is similar in all categories.
+
+```{r qplot_histograms_4, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(total.sulfur.dioxide, data = redwine_input, 
+           geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of total.sulfur.dioxide is similar in all categories.
+
+```{r qplot_histograms_5, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(citric.acid, data = redwine_input, 
+           geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of citric.acid is similar in all categories except 7 and 8.
+
+```{r qplot_histograms_6, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(fixed.acidity, data = redwine_input, 
+           geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of fixed.acidity is similar in all categories.
+
+```{r qplot_histograms_7, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+p <- qplot(volatile.acidity, data = redwine_input, 
+           geom = "histogram", binwidth = 0.1)
+p + facet_wrap(~ quality, scales = "free_y")
+```
+
+The variation of volatile.acidity is similar in all categories.
+
+The plots seems to follow the same trends across all categories. Obviously, there are very few data points in the lower and extreme higher ends of alcohol quality. Hence, nothing much can be and nothing should be inferred out of those histograms.
+
+Since quality seems to be highly influenced by acohol and volatile.acidity, a plot incorporating both has been attempted. 
+```{r multi_plots_2a, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Plotting volatile.acidity and quality
+ggplot(aes(x = volatile.acidity, y = qualityCategory, color = alcohol), data = redwine_input) + 
+    geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+    geom_smooth(method = "loess", aes(group=1)) +
+    scale_colour_gradient(low="green",high="red") +
+    scale_x_log10() +
+    ggtitle('Quality by alcohol and volatile acidity')
+```
+
+It looks like quality reduces with volatile.acidity while it increases with alcohol.
+
+```{r multi_plots_2b, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+# Plotting citric.acid and fixed.acidity
+ggplot(aes(x = citric.acid, y = pH, color = fixed.acidity), data = redwine_input) + 
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  geom_smooth(method = "loess", aes(group=1)) +
+  scale_colour_gradient(low="white",high="red") +
+  scale_x_log10() +
+  ggtitle('pH by fixed acidity and citric acid')
+```
+
+It seems that pH has a slightly decreasing trend with citric.acid but does not get affected by fixed.acidity.
+
+It looks like volatile.acidity, alcohol, sulphates, citric.acid and fixed.acidity could be decent predictors for red wine quality. This cann be checked using a linear model.
+```{r linear_models, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+library(memisc)
+m1 <- lm(quality ~ I(log(volatile.acidity)) + alcohol, data = redwine_input)
+m2 <- update(m1, ~. + chlorides + sulphates)
+m3 <- update(m2, ~. + free.sulfur.dioxide)
+m4 <- update(m3, ~. + citric.acid + fixed.acidity)
+m5 <- update(m4, ~. + density)
+m6 <- update(m5, ~. + total.sulfur.dioxide)
+mtable(m1,m2,m3,m4,m5,m6)
+```
+
+The final linear model shows a decent R-squred value of 0.4. It looks like only after adding total.sulfur.dioxide along with the other variables added before does the model R-squared value go above 0.4. It looks like the variables apart from volatile.acidity and alcohol are weak predictors. Even the correlation of total.sulfur.dioxide is lesser than sulphates which shows that it in itself is not a strong predictor.
+```{r linear_models_2, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+cor.test(redwine_input$quality, redwine_input$sulphates)
+```
+
+# Final Plots
+## Plot 1
+```{r ggplot_hist_1, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+qplot(log10(redwine_input$alcohol),
+      geom="histogram",
+      binwidth = 0.01,  
+      main = "Histogram for Alcohol", 
+      xlab = "Alcohol (% by volume)")
+```
+
+## Plot 1 description
+The histogram of alcohol clearly has 2 modes. The first mode also has 2 peaks very near by. It seems like the large proportion of red wine have lower amounts of alcohol content.
+
+## Plot 2
+```{r ggplot_density_1, echo=FALSE, cache=TRUE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+ggplot(data = redwine_input_scatter, aes(x=citric.acid, fill = qualityCategory, 
+                                         order = as.numeric(qualityCategory))) + 
+  geom_density(alpha = 0.4) +
+  scale_fill_brewer(direction = -1, type = 'div', name="Quality (score \nbetween \n0 and 10)") +
+  ggtitle("Density plots of citric acid with quality category") +
+  xlab("Citric Acid (g / dm^3)") +
+  ylab("Probabilty Density") 
+```
+
+## Plot description
+Higher quality alcohols have a higher density for citric acid. As quality increases the citirc acid proportion increases. The density plots are multimodal for many of the quality categories. 
+
+## Plot 3
+```{r multi_plots_3, echo=FALSE, cache.path = 'cache/', fig.path='figure/', fig.width=10, fig.height=10}
+  ggplot(aes(x = volatile.acidity, y = qualityCategory, color = alcohol), data = redwine_input) + 
+    geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+    geom_smooth(method = "loess", aes(group=1)) +
+    scale_colour_gradient(low="green",high="red", name="Alcohol \n(% by volume)") +
+    scale_x_log10() +
+    ggtitle('Quality by alcohol and volatile acidity') +
+    xlab("Volatile Acidity (g / dm^3)") +
+    ylab("Quality (score between 0 and 10)") 
+```
+
+## Plot description
+Red Wine Quality has a decreasing - slightly linear - trend with volatile acidity. On the other hand, the quality of red wine increases steadily by alcohol content. It's clear that red wine is better if the alcohol content is better and if the red wine is progressively less acidic.
+
+# Reflection
+The red wine dataset consists of 1599 observations with 13 variables. I initially computed the summary of the variables in the dataset like mean, median and range. Then, I went about exploring the relationships between the various variables to find out interesting trends using bi-variate and multi-variate plots. I finally built a linear model to predict red wine quality.
+
+When I initally plotted quality and alcohol with volatile.acidity as legend, I was able to clearly see the linear trend of quality and alcohol but the trend of quality with volatile.acidity was not clear. I then realized that high correlation variables can be more easily detected using color. But trends between low correlation variables can be more clearly discerned by using a regression line plotted on top of it. On doing that, the trends became more clear. I used this technique in the multivariate plots and I found pretty good success.
+
+The faceted histograms of the variables on the other hand did not give me much information on the varying trends within each quality category, except for citric acid whose density plot was pretty rich in terms of differing number of modes and skewness among the different alcohol categories.
+
+A linear model attempted gave a respectable R-squared value of 0.4. The log of volatile.acidity and alcohol turned out to be pretty good predictors in the model. Since the observations are so less, the model doesn't have enough predictive power. If more data is present, then the model can definitely be improved. 
